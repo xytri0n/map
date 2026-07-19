@@ -3,180 +3,295 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Free Advanced Live Map</title>
+    <title>Ultimate Free GPS Navigation</title>
 
-    <!-- Leaflet CSS -->
+    <!-- Leaflet Core CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    
-    <!-- Leaflet Geocoder (Search Bar) CSS -->
+    <!-- Leaflet Geocoder CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+    <!-- Leaflet Routing Machine CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
 
     <style>
-        /* Full-screen map layout */
         html, body {
-            margin: 0;
-            padding: 0;
-            height: 100%;
-            width: 100%;
-            font-family: Arial, sans-serif;
+            margin: 0; padding: 0; height: 100%; width: 100%;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden; /* Prevent scrolling when map rotates */
+            background-color: #e5e3df;
+        }
+        
+        /* Map Container */
+        #map-container {
+            height: 100%; width: 100%;
+            transition: transform 0.3s ease-out; /* Smooth rotation */
         }
         #map {
-            height: 100%;
-            width: 100%;
+            height: 100%; width: 100%;
         }
-        /* Custom styling for the "Locate Me" button */
-        .locate-button {
-            background-color: white;
-            padding: 8px;
-            border-radius: 4px;
-            box-shadow: 0 1px 5px rgba(0,0,0,0.65);
-            cursor: pointer;
-            font-weight: bold;
+
+        /* UI Overlays */
+        .overlay-panel {
+            position: absolute;
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            pointer-events: auto;
+        }
+
+        /* Speedometer (Top Left) */
+        #speedometer {
+            top: 15px; left: 15px;
+            text-align: center;
+            min-width: 80px;
+        }
+        .speed-value { font-size: 28px; font-weight: bold; color: #1a73e8; }
+        .speed-unit { font-size: 12px; color: #555; }
+
+        /* Controls (Bottom Center) */
+        #controls {
+            bottom: 25px; left: 50%;
+            transform: translateX(-50%);
             display: flex;
-            align-items: center;
-            justify-content: center;
+            gap: 10px;
         }
-        .locate-button:hover {
-            background-color: #f4f4f4;
+
+        button {
+            background-color: #1a73e8; color: white;
+            border: none; padding: 12px 20px;
+            border-radius: 25px; font-size: 14px; font-weight: bold;
+            cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            display: flex; align-items: center; gap: 5px;
+            transition: background 0.2s;
+        }
+        button:hover { background-color: #1557b0; }
+        button.active { background-color: #34a853; }
+        button.danger { background-color: #ea4335; }
+
+        /* Hide the default routing text box to keep UI clean unless navigating */
+        .leaflet-routing-container {
+            max-height: 250px; overflow-y: auto;
+            background: rgba(255,255,255,0.9);
+            border-radius: 8px;
+            display: none; /* Hidden by default */
+        }
+        .routing-active .leaflet-routing-container {
+            display: block;
+        }
+
+        /* Custom User Arrow Icon */
+        .user-arrow {
+            transition: transform 0.2s linear;
         }
     </style>
 </head>
 <body>
 
-    <div id="map"></div>
+    <!-- Overlays -->
+    <div id="speedometer" class="overlay-panel">
+        <div class="speed-value" id="speed-display">0</div>
+        <div class="speed-unit">
+            <span id="speed-kmh">km/h</span> | <span id="speed-mph">mph</span>
+        </div>
+    </div>
 
-    <!-- Leaflet JS -->
+    <div id="controls" class="overlay-panel" style="background: transparent; box-shadow: none;">
+        <button id="btn-recenter">📍 Recenter</button>
+        <button id="btn-compass">🧭 Start Driving Mode</button>
+        <button id="btn-cancel-route" class="danger" style="display: none;">❌ End Route</button>
+    </div>
+
+    <!-- Map -->
+    <div id="map-container">
+        <div id="map"></div>
+    </div>
+
+    <!-- Leaflet JS & Plugins -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
-    <!-- Leaflet Geocoder (Search Bar) JS -->
     <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
 
     <script>
-        // 1. Initialize the Map centered on a default location (e.g., New York City)
-        const map = L.map('map').setView([40.7128, -74.0060], 13);
+        // 1. Initialize Map
+        const map = L.map('map', { zoomControl: false }).setView([0, 0], 2);
+        
+        // Add zoom controls to the bottom right
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-        // 2. Define standard Free Map Layers (Street View and Satellite View)
-        const streetTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '© OpenStreetMap contributors'
+        // Map Layers
+        const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+        const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
+        L.control.layers({ "Street View": streetLayer, "Satellite": satelliteLayer }, null, { position: 'topright' }).addTo(map);
+
+        // 2. Global Variables for Tracking & Routing
+        let userLat = null, userLng = null;
+        let userMarker = null;
+        let isDrivingMode = false;
+        let routingControl = null;
+        let currentHeading = 0;
+
+        // Custom SVG Arrow for User Location
+        const arrowIcon = L.divIcon({
+            className: 'user-arrow',
+            html: `<svg width="30" height="30" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg" style="transform: rotate(0deg); transform-origin: center;">
+                    <polygon points="15,2 28,28 15,22 2,28" fill="#1a73e8" stroke="white" stroke-width="2"/>
+                   </svg>`,
+            iconSize: [30, 30],
+            iconAnchor: [15, 15]
         });
 
-        const satelliteTiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-            maxZoom: 19,
-            attribution: 'Tiles © Esri — Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
-        });
+        // 3. Routing Engine Setup (Point-to-point driving directions)
+        function calculateRoute(destinationLat, destinationLng) {
+            if (!userLat || !userLng) {
+                alert("Waiting for GPS signal to calculate route...");
+                return;
+            }
 
-        // Add default layer to map
-        streetTiles.addTo(map);
+            // Remove existing route if any
+            if (routingControl) { map.removeControl(routingControl); }
 
-        // 3. Add Layer Control Toggle (Top Right)
-        const baseMaps = {
-            "Map View (Street)": streetTiles,
-            "Satellite View": satelliteTiles
-        };
-        L.control.layers(baseMaps).addTo(map);
+            document.body.classList.add('routing-active');
+            document.getElementById('btn-cancel-route').style.display = 'block';
 
-        // 4. Add Google Maps-style Search Bar (Top Right) using free Nominatim service
-        const geocoder = L.Control.geocoder({
-            defaultMarkGeocode: false
-        })
-        .on('markgeocode', function(e) {
-            const bbox = e.geocode.bbox;
-            const poly = L.polygon([
-                bbox.getSouthWest(),
-                bbox.getNorthWest(),
-                bbox.getNorthEast(),
-                bbox.getSouthEast()
-            ]);
-            map.fitBounds(poly.getBounds());
-            
-            // Drop a marker on the searched location
-            L.marker(e.geocode.center)
-                .addTo(map)
-                .bindPopup(e.geocode.name)
-                .openPopup();
-        })
-        .addTo(map);
-
-        // 5. Live GPS Tracking Logic
-        let userMarker, accuracyCircle;
-        let firstLocationView = true;
-
-        if (navigator.geolocation) {
-            // watchPosition automatically updates whenever the user moves
-            navigator.geolocation.watchPosition(
-                (position) => {
-                    const lat = position.coords.latitude;
-                    const lng = position.coords.longitude;
-                    const accuracy = position.coords.accuracy;
-
-                    // If it's the first time getting location, center the map on the user
-                    if (firstLocationView) {
-                        map.setView([lat, lng], 16);
-                        firstLocationView = false;
-                    }
-
-                    // Update or create the User's Marker
-                    if (userMarker) {
-                        userMarker.setLatLng([lat, lng]);
-                        accuracyCircle.setLatLng([lat, lng]).setRadius(accuracy);
-                    } else {
-                        // Create a distinct blue circle marker for the user's GPS position
-                        userMarker = L.circleMarker([lat, lng], {
-                            radius: 9,
-                            fillColor: '#2A93FC',
-                            color: '#fff',
-                            weight: 3,
-                            fillOpacity: 1
-                        }).addTo(map).bindPopup("You are here");
-
-                        // Shaded circle showing GPS accuracy bounds
-                        accuracyCircle = L.circle([lat, lng], {
-                            radius: accuracy,
-                            fillColor: '#2A93FC',
-                            fillOpacity: 0.15,
-                            stroke: false
-                        }).addTo(map);
-                    }
+            routingControl = L.Routing.control({
+                waypoints: [
+                    L.latLng(userLat, userLng), // Start (You)
+                    L.latLng(destinationLat, destinationLng) // End (Destination)
+                ],
+                routeWhileDragging: false,
+                addWaypoints: false,
+                fitSelectedRoutes: true,
+                lineOptions: {
+                    styles: [{ color: '#00b3fd', opacity: 0.8, weight: 6 }]
                 },
-                (error) => {
-                    console.error("Error getting location: ", error.message);
-                    alert("Could not access your GPS. Please ensure Location Permissions are enabled.");
-                },
-                {
-                    enableHighAccuracy: true, // Forces phone/laptop to use hardware GPS if available
-                    maximumAge: 1000,         // Grabs updates quickly
-                    timeout: 5000
-                }
-            );
-        } else {
-            alert("Your browser does not support GPS Geolocation.");
+                router: L.Routing.osrmv1({
+                    serviceUrl: 'https://router.project-osrm.org/route/v1' // Free OSRM Server
+                })
+            }).addTo(map);
         }
 
-        // 6. Custom "Locate Me" Button (Bottom Left)
-        const locateControl = L.Control.extend({
-            options: { position: 'bottomleft' },
-            onAdd: function (map) {
-                const container = L.DomUtil.create('div', 'locate-button');
-                container.innerHTML = '📍 Recenter GPS';
-                container.onclick = function() {
-                    if (userMarker) {
-                        map.setView(userMarker.getLatLng(), 16);
-                    } else {
-                        alert("GPS signal not acquired yet.");
-                    }
-                };
-                return container;
+        // Cancel Route
+        document.getElementById('btn-cancel-route').addEventListener('click', () => {
+            if (routingControl) {
+                map.removeControl(routingControl);
+                routingControl = null;
+            }
+            document.body.classList.remove('routing-active');
+            document.getElementById('btn-cancel-route').style.display = 'none';
+        });
+
+        // 4. Search Bar Integration (Geocoding)
+        L.Control.geocoder({ defaultMarkGeocode: false })
+            .on('markgeocode', function(e) {
+                const destLat = e.geocode.center.lat;
+                const destLng = e.geocode.center.lng;
+                calculateRoute(destLat, destLng); // Automatically route to searched place
+            }).addTo(map);
+
+        // Right-click / Long press to set destination
+        map.on('contextmenu', function(e) {
+            if (confirm("Navigate to this location?")) {
+                calculateRoute(e.latlng.lat, e.latlng.lng);
             }
         });
-        map.addControl(new locateControl());
 
-        // 7. Right-Click / Long-Press feature to drop a custom pin anywhere
-        map.on('contextmenu', function(e) {
-            L.marker([e.latlng.lat, e.latlng.lng])
-                .addTo(map)
-                .bindPopup(`Dropped Pin<br>Lat: ${e.latlng.lat.toFixed(4)}, Lng: ${e.latlng.lng.toFixed(4)}`)
-                .openPopup();
+        // 5. Live GPS & Speedometer Tracking
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(
+                (position) => {
+                    userLat = position.coords.latitude;
+                    userLng = position.coords.longitude;
+                    const speedMps = position.coords.speed || 0; // Speed in meters per second
+                    
+                    // Update Speedometer UI
+                    const speedKmh = Math.round(speedMps * 3.6);
+                    const speedMph = Math.round(speedMps * 2.23694);
+                    document.getElementById('speed-display').innerText = speedKmh; // Default to KMH
+                    document.getElementById('speed-kmh').style.fontWeight = 'bold';
+                    
+                    // Update Marker
+                    if (!userMarker) {
+                        userMarker = L.marker([userLat, userLng], { icon: arrowIcon, zIndexOffset: 1000 }).addTo(map);
+                        map.setView([userLat, userLng], 16);
+                    } else {
+                        userMarker.setLatLng([userLat, userLng]);
+                    }
+
+                    // If driving mode is on, keep map locked to user
+                    if (isDrivingMode) {
+                        map.panTo([userLat, userLng], { animate: true, duration: 0.5 });
+                    }
+                },
+                (error) => { console.error("GPS Error:", error); },
+                { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
+            );
+        } else {
+            alert("Geolocation is not supported by your browser.");
+        }
+
+        // 6. Compass & Map Rotation Logic
+        const btnCompass = document.getElementById('btn-compass');
+        const mapContainer = document.getElementById('map-container');
+
+        // Handle Device Orientation (Phone Compass)
+        function handleOrientation(event) {
+            if (!isDrivingMode) return;
+
+            // Get heading (varies between iOS and Android)
+            let heading = event.webkitCompassHeading || Math.abs(event.alpha - 360);
+            
+            if (heading) {
+                currentHeading = heading;
+                
+                // 1. Rotate the map container opposite to the heading to keep the phone pointing "up"
+                mapContainer.style.transform = `rotate(${-heading}deg)`;
+                
+                // 2. Keep the arrow pointing straight up relative to the screen
+                const svg = document.querySelector('.user-arrow svg');
+                if (svg) svg.style.transform = `rotate(${heading}deg)`;
+            }
+        }
+
+        btnCompass.addEventListener('click', async () => {
+            // Request permission for iOS 13+ devices
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                try {
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    if (permission !== 'granted') {
+                        alert("Compass permission denied.");
+                        return;
+                    }
+                } catch (error) { console.error(error); }
+            }
+
+            isDrivingMode = !isDrivingMode;
+            
+            if (isDrivingMode) {
+                btnCompass.innerText = "🛑 Stop Driving Mode";
+                btnCompass.classList.add('active');
+                map.setZoom(18); // Zoom in close like a real GPS
+                map.dragging.disable(); // Disable manual dragging while driving
+                window.addEventListener('deviceorientation', handleOrientation);
+                
+                // Recenter immediately
+                if (userLat) map.panTo([userLat, userLng]);
+            } else {
+                btnCompass.innerText = "🧭 Start Driving Mode";
+                btnCompass.classList.remove('active');
+                map.dragging.enable(); // Re-enable manual map panning
+                mapContainer.style.transform = `rotate(0deg)`; // Reset map rotation
+                window.removeEventListener('deviceorientation', handleOrientation);
+            }
+        });
+
+        // 7. Recenter Button
+        document.getElementById('btn-recenter').addEventListener('click', () => {
+            if (userLat && userLng) {
+                map.setView([userLat, userLng], 16);
+            } else {
+                alert("Still waiting for GPS signal...");
+            }
         });
 
     </script>
