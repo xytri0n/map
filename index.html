@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Free Advanced Live Map</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- Leaflet Geocoder (Search Bar) CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+
+    <style>
+        /* Full-screen map layout */
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            font-family: Arial, sans-serif;
+        }
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+        /* Custom styling for the "Locate Me" button */
+        .locate-button {
+            background-color: white;
+            padding: 8px;
+            border-radius: 4px;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+            cursor: pointer;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .locate-button:hover {
+            background-color: #f4f4f4;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Leaflet Geocoder (Search Bar) JS -->
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+
+    <script>
+        // 1. Initialize the Map centered on a default location (e.g., New York City)
+        const map = L.map('map').setView([40.7128, -74.0060], 13);
+
+        // 2. Define standard Free Map Layers (Street View and Satellite View)
+        const streetTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        });
+
+        const satelliteTiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 19,
+            attribution: 'Tiles © Esri — Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+        });
+
+        // Add default layer to map
+        streetTiles.addTo(map);
+
+        // 3. Add Layer Control Toggle (Top Right)
+        const baseMaps = {
+            "Map View (Street)": streetTiles,
+            "Satellite View": satelliteTiles
+        };
+        L.control.layers(baseMaps).addTo(map);
+
+        // 4. Add Google Maps-style Search Bar (Top Right) using free Nominatim service
+        const geocoder = L.Control.geocoder({
+            defaultMarkGeocode: false
+        })
+        .on('markgeocode', function(e) {
+            const bbox = e.geocode.bbox;
+            const poly = L.polygon([
+                bbox.getSouthWest(),
+                bbox.getNorthWest(),
+                bbox.getNorthEast(),
+                bbox.getSouthEast()
+            ]);
+            map.fitBounds(poly.getBounds());
+            
+            // Drop a marker on the searched location
+            L.marker(e.geocode.center)
+                .addTo(map)
+                .bindPopup(e.geocode.name)
+                .openPopup();
+        })
+        .addTo(map);
+
+        // 5. Live GPS Tracking Logic
+        let userMarker, accuracyCircle;
+        let firstLocationView = true;
+
+        if (navigator.geolocation) {
+            // watchPosition automatically updates whenever the user moves
+            navigator.geolocation.watchPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    const accuracy = position.coords.accuracy;
+
+                    // If it's the first time getting location, center the map on the user
+                    if (firstLocationView) {
+                        map.setView([lat, lng], 16);
+                        firstLocationView = false;
+                    }
+
+                    // Update or create the User's Marker
+                    if (userMarker) {
+                        userMarker.setLatLng([lat, lng]);
+                        accuracyCircle.setLatLng([lat, lng]).setRadius(accuracy);
+                    } else {
+                        // Create a distinct blue circle marker for the user's GPS position
+                        userMarker = L.circleMarker([lat, lng], {
+                            radius: 9,
+                            fillColor: '#2A93FC',
+                            color: '#fff',
+                            weight: 3,
+                            fillOpacity: 1
+                        }).addTo(map).bindPopup("You are here");
+
+                        // Shaded circle showing GPS accuracy bounds
+                        accuracyCircle = L.circle([lat, lng], {
+                            radius: accuracy,
+                            fillColor: '#2A93FC',
+                            fillOpacity: 0.15,
+                            stroke: false
+                        }).addTo(map);
+                    }
+                },
+                (error) => {
+                    console.error("Error getting location: ", error.message);
+                    alert("Could not access your GPS. Please ensure Location Permissions are enabled.");
+                },
+                {
+                    enableHighAccuracy: true, // Forces phone/laptop to use hardware GPS if available
+                    maximumAge: 1000,         // Grabs updates quickly
+                    timeout: 5000
+                }
+            );
+        } else {
+            alert("Your browser does not support GPS Geolocation.");
+        }
+
+        // 6. Custom "Locate Me" Button (Bottom Left)
+        const locateControl = L.Control.extend({
+            options: { position: 'bottomleft' },
+            onAdd: function (map) {
+                const container = L.DomUtil.create('div', 'locate-button');
+                container.innerHTML = '📍 Recenter GPS';
+                container.onclick = function() {
+                    if (userMarker) {
+                        map.setView(userMarker.getLatLng(), 16);
+                    } else {
+                        alert("GPS signal not acquired yet.");
+                    }
+                };
+                return container;
+            }
+        });
+        map.addControl(new locateControl());
+
+        // 7. Right-Click / Long-Press feature to drop a custom pin anywhere
+        map.on('contextmenu', function(e) {
+            L.marker([e.latlng.lat, e.latlng.lng])
+                .addTo(map)
+                .bindPopup(`Dropped Pin<br>Lat: ${e.latlng.lat.toFixed(4)}, Lng: ${e.latlng.lng.toFixed(4)}`)
+                .openPopup();
+        });
+
+    </script>
+</body>
+</html>
