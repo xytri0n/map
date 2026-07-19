@@ -2,296 +2,360 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ultimate Free GPS Navigation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Advanced OpenFreeMap Navigation</title>
 
-    <!-- Leaflet Core CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <!-- Leaflet Geocoder CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
-    <!-- Leaflet Routing Machine CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+    <!-- MapLibre GL CSS -->
+    <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
 
     <style>
-        html, body {
-            margin: 0; padding: 0; height: 100%; width: 100%;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            overflow: hidden; /* Prevent scrolling when map rotates */
-            background-color: #e5e3df;
-        }
+        /* Base Reset & Typography */
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        body, html { width: 100%; height: 100%; overflow: hidden; background-color: #f0f3f4; }
         
         /* Map Container */
-        #map-container {
-            height: 100%; width: 100%;
-            transition: transform 0.3s ease-out; /* Smooth rotation */
-        }
-        #map {
-            height: 100%; width: 100%;
-        }
+        #map { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 1; }
 
         /* UI Overlays */
-        .overlay-panel {
-            position: absolute;
-            z-index: 1000;
-            background: rgba(255, 255, 255, 0.95);
-            padding: 10px 15px;
-            border-radius: 8px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-            pointer-events: auto;
+        .ui-container { position: absolute; z-index: 10; pointer-events: none; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: space-between; padding: 15px; }
+        .pointer-auto { pointer-events: auto; }
+
+        /* Top Bar: Search & Home */
+        .top-bar { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 400px; }
+        
+        .search-box {
+            background: white; border-radius: 24px; display: flex; align-items: center;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2); padding: 5px 15px; position: relative;
+        }
+        .search-box input {
+            border: none; outline: none; padding: 12px 5px; width: 100%; font-size: 16px;
+        }
+        #search-results {
+            position: absolute; top: 55px; left: 0; right: 0; background: white;
+            border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            max-height: 250px; overflow-y: auto; display: none; flex-direction: column;
+        }
+        .search-item { padding: 12px 15px; cursor: pointer; border-bottom: 1px solid #eee; font-size: 14px; }
+        .search-item:hover { background: #f8f9fa; }
+
+        .btn-home {
+            background: white; border: none; padding: 12px 20px; border-radius: 24px;
+            font-weight: bold; color: #1a73e8; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+            align-self: flex-start; display: flex; align-items: center; gap: 8px; font-size: 14px;
         }
 
-        /* Speedometer (Top Left) */
-        #speedometer {
-            top: 15px; left: 15px;
-            text-align: center;
-            min-width: 80px;
-        }
-        .speed-value { font-size: 28px; font-weight: bold; color: #1a73e8; }
-        .speed-unit { font-size: 12px; color: #555; }
-
-        /* Controls (Bottom Center) */
-        #controls {
-            bottom: 25px; left: 50%;
-            transform: translateX(-50%);
-            display: flex;
-            gap: 10px;
+        /* Right Floating Action Buttons */
+        .fab-container { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 10px; pointer-events: auto; }
+        .fab {
+            background: white; border: none; width: 45px; height: 45px; border-radius: 50%;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2); cursor: pointer; font-size: 20px; display: flex; align-items: center; justify-content: center;
         }
 
-        button {
-            background-color: #1a73e8; color: white;
-            border: none; padding: 12px 20px;
-            border-radius: 25px; font-size: 14px; font-weight: bold;
-            cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-            display: flex; align-items: center; gap: 5px;
-            transition: background 0.2s;
+        /* Bottom Control Panel */
+        .bottom-panel {
+            background: white; border-radius: 20px; padding: 20px; box-shadow: 0 -4px 15px rgba(0,0,0,0.1);
+            display: flex; flex-direction: column; gap: 15px; pointer-events: auto; max-width: 400px; margin: 0 auto; width: 100%;
         }
-        button:hover { background-color: #1557b0; }
-        button.active { background-color: #34a853; }
-        button.danger { background-color: #ea4335; }
+        .dashboard { display: flex; justify-content: space-between; align-items: center; }
+        .speed-box { display: flex; flex-direction: column; align-items: center; }
+        .speed-val { font-size: 32px; font-weight: 800; color: #202124; line-height: 1; }
+        .speed-unit { font-size: 12px; color: #5f6368; font-weight: bold; }
+        
+        .drive-btn {
+            background: #1a73e8; color: white; border: none; padding: 15px 30px;
+            border-radius: 30px; font-size: 16px; font-weight: bold; cursor: pointer;
+            flex-grow: 1; margin-left: 15px; transition: 0.2s;
+        }
+        .drive-btn.active { background: #ea4335; }
+        .end-route-btn { background: #f1f3f4; color: #ea4335; border: none; padding: 10px; border-radius: 12px; font-weight: bold; cursor: pointer; display: none; }
 
-        /* Hide the default routing text box to keep UI clean unless navigating */
-        .leaflet-routing-container {
-            max-height: 250px; overflow-y: auto;
-            background: rgba(255,255,255,0.9);
-            border-radius: 8px;
-            display: none; /* Hidden by default */
+        /* Custom Map Markers */
+        /* 1. Idle Blue Dot */
+        .blue-dot {
+            width: 20px; height: 20px; background-color: #4285F4; border: 3px solid white;
+            border-radius: 50%; box-shadow: 0 0 10px rgba(66, 133, 244, 0.5);
         }
-        .routing-active .leaflet-routing-container {
-            display: block;
+        .blue-dot::after {
+            content: ""; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+            background: rgba(66, 133, 244, 0.3); border-radius: 50%;
+            animation: pulse 2s infinite ease-in-out; pointer-events: none;
+        }
+        @keyframes pulse { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
+
+        /* 2. Driving Navigation Arrow */
+        .nav-arrow {
+            width: 40px; height: 40px; background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%234285F4" stroke="white" stroke-width="1.5"><path d="M12 2L4 20l1.41 1.41L12 17l6.59 4.41L20 20l-8-18z"/></svg>') no-repeat center center;
+            background-size: contain; filter: drop-shadow(0 4px 4px rgba(0,0,0,0.4));
         }
 
-        /* Custom User Arrow Icon */
-        .user-arrow {
-            transition: transform 0.2s linear;
+        /* Mobile specific fixes */
+        @media (max-width: 600px) {
+            .bottom-panel { border-radius: 20px 20px 0 0; margin: 0 -15px -15px -15px; width: calc(100% + 30px); max-width: none; }
+            .fab-container { top: 40%; }
         }
     </style>
 </head>
 <body>
 
-    <!-- Overlays -->
-    <div id="speedometer" class="overlay-panel">
-        <div class="speed-value" id="speed-display">0</div>
-        <div class="speed-unit">
-            <span id="speed-kmh">km/h</span> | <span id="speed-mph">mph</span>
+    <!-- Map Container -->
+    <div id="map"></div>
+
+    <!-- UI Overlay -->
+    <div class="ui-container">
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <div class="search-box pointer-auto">
+                <span style="font-size: 20px; padding-right: 10px;">🔍</span>
+                <input type="text" id="search-input" placeholder="Search here..." autocomplete="off">
+                <div id="search-results"></div>
+            </div>
+            <button class="btn-home pointer-auto" id="btn-home">🏠 Take me Home</button>
+            <button class="btn-home pointer-auto" id="btn-set-home" style="color: #5f6368; display: none;">⚙️ Set current location as Home</button>
+        </div>
+
+        <!-- Floating Action Buttons -->
+        <div class="fab-container">
+            <button class="fab" id="btn-recenter" title="Recenter">📍</button>
+            <button class="fab" id="btn-zoom-in" title="Zoom In">➕</button>
+            <button class="fab" id="btn-zoom-out" title="Zoom Out">➖</button>
+        </div>
+
+        <!-- Bottom Dashboard -->
+        <div class="bottom-panel pointer-auto">
+            <div class="dashboard">
+                <div class="speed-box">
+                    <span class="speed-val" id="speed-display">0</span>
+                    <span class="speed-unit">km/h</span>
+                </div>
+                <button class="drive-btn" id="btn-drive">Start Driving</button>
+            </div>
+            <button class="end-route-btn" id="btn-end-route">✖ Cancel Navigation</button>
         </div>
     </div>
 
-    <div id="controls" class="overlay-panel" style="background: transparent; box-shadow: none;">
-        <button id="btn-recenter">📍 Recenter</button>
-        <button id="btn-compass">🧭 Start Driving Mode</button>
-        <button id="btn-cancel-route" class="danger" style="display: none;">❌ End Route</button>
-    </div>
-
-    <!-- Map -->
-    <div id="map-container">
-        <div id="map"></div>
-    </div>
-
-    <!-- Leaflet JS & Plugins -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
-    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+    <!-- MapLibre GL JS -->
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
 
     <script>
-        // 1. Initialize Map
-        const map = L.map('map', { zoomControl: false }).setView([0, 0], 2);
-        
-        // Add zoom controls to the bottom right
-        L.control.zoom({ position: 'bottomright' }).addTo(map);
+        // 1. Initialize MapLibre with OpenFreeMap 3D Vector Tiles
+        const map = new maplibregl.Map({
+            container: 'map',
+            style: 'https://tiles.openfreemap.org/styles/liberty', // Free, open-source beautiful map style
+            center: [0, 0],
+            zoom: 2,
+            pitch: 0, // Viewing angle (0 is top-down, 60 is 3D driving view)
+            bearing: 0 // Compass direction
+        });
 
-        // Map Layers
-        const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-        const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
-        L.control.layers({ "Street View": streetLayer, "Satellite": satelliteLayer }, null, { position: 'topright' }).addTo(map);
-
-        // 2. Global Variables for Tracking & Routing
+        // 2. Global Variables
         let userLat = null, userLng = null;
+        let isDriving = false;
         let userMarker = null;
-        let isDrivingMode = false;
-        let routingControl = null;
         let currentHeading = 0;
+        let homeCoords = JSON.parse(localStorage.getItem('homeCoords')); // Load saved home
 
-        // Custom SVG Arrow for User Location
-        const arrowIcon = L.divIcon({
-            className: 'user-arrow',
-            html: `<svg width="30" height="30" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg" style="transform: rotate(0deg); transform-origin: center;">
-                    <polygon points="15,2 28,28 15,22 2,28" fill="#1a73e8" stroke="white" stroke-width="2"/>
-                   </svg>`,
-            iconSize: [30, 30],
-            iconAnchor: [15, 15]
-        });
+        // HTML elements for the custom marker
+        const elBlueDot = document.createElement('div'); elBlueDot.className = 'blue-dot';
+        const elNavArrow = document.createElement('div'); elNavArrow.className = 'nav-arrow';
 
-        // 3. Routing Engine Setup (Point-to-point driving directions)
-        function calculateRoute(destinationLat, destinationLng) {
-            if (!userLat || !userLng) {
-                alert("Waiting for GPS signal to calculate route...");
-                return;
-            }
+        // Initialize Marker (Starts as blue dot)
+        userMarker = new maplibregl.Marker({ element: elBlueDot, rotationAlignment: 'map' })
+            .setLngLat([0,0])
+            .addTo(map);
 
-            // Remove existing route if any
-            if (routingControl) { map.removeControl(routingControl); }
+        // UI Elements
+        const searchInput = document.getElementById('search-input');
+        const searchResults = document.getElementById('search-results');
+        const btnDrive = document.getElementById('btn-drive');
+        const speedDisplay = document.getElementById('speed-display');
+        const btnEndRoute = document.getElementById('btn-end-route');
 
-            document.body.classList.add('routing-active');
-            document.getElementById('btn-cancel-route').style.display = 'block';
-
-            routingControl = L.Routing.control({
-                waypoints: [
-                    L.latLng(userLat, userLng), // Start (You)
-                    L.latLng(destinationLat, destinationLng) // End (Destination)
-                ],
-                routeWhileDragging: false,
-                addWaypoints: false,
-                fitSelectedRoutes: true,
-                lineOptions: {
-                    styles: [{ color: '#00b3fd', opacity: 0.8, weight: 6 }]
-                },
-                router: L.Routing.osrmv1({
-                    serviceUrl: 'https://router.project-osrm.org/route/v1' // Free OSRM Server
-                })
-            }).addTo(map);
+        // Check if Home is set, if not show the "Set Home" button
+        if (!homeCoords) {
+            document.getElementById('btn-set-home').style.display = 'flex';
         }
 
-        // Cancel Route
-        document.getElementById('btn-cancel-route').addEventListener('click', () => {
-            if (routingControl) {
-                map.removeControl(routingControl);
-                routingControl = null;
-            }
-            document.body.classList.remove('routing-active');
-            document.getElementById('btn-cancel-route').style.display = 'none';
-        });
-
-        // 4. Search Bar Integration (Geocoding)
-        L.Control.geocoder({ defaultMarkGeocode: false })
-            .on('markgeocode', function(e) {
-                const destLat = e.geocode.center.lat;
-                const destLng = e.geocode.center.lng;
-                calculateRoute(destLat, destLng); // Automatically route to searched place
-            }).addTo(map);
-
-        // Right-click / Long press to set destination
-        map.on('contextmenu', function(e) {
-            if (confirm("Navigate to this location?")) {
-                calculateRoute(e.latlng.lat, e.latlng.lng);
-            }
-        });
-
-        // 5. Live GPS & Speedometer Tracking
+        // 3. Geolocation & Speed Tracking
         if (navigator.geolocation) {
-            navigator.geolocation.watchPosition(
-                (position) => {
-                    userLat = position.coords.latitude;
-                    userLng = position.coords.longitude;
-                    const speedMps = position.coords.speed || 0; // Speed in meters per second
-                    
-                    // Update Speedometer UI
-                    const speedKmh = Math.round(speedMps * 3.6);
-                    const speedMph = Math.round(speedMps * 2.23694);
-                    document.getElementById('speed-display').innerText = speedKmh; // Default to KMH
-                    document.getElementById('speed-kmh').style.fontWeight = 'bold';
-                    
-                    // Update Marker
-                    if (!userMarker) {
-                        userMarker = L.marker([userLat, userLng], { icon: arrowIcon, zIndexOffset: 1000 }).addTo(map);
-                        map.setView([userLat, userLng], 16);
-                    } else {
-                        userMarker.setLatLng([userLat, userLng]);
-                    }
+            navigator.geolocation.watchPosition((pos) => {
+                userLat = pos.coords.latitude;
+                userLng = pos.coords.longitude;
+                
+                // Speed calculation
+                let speedMps = pos.coords.speed || 0;
+                speedDisplay.innerText = Math.round(speedMps * 3.6); // Convert m/s to km/h
 
-                    // If driving mode is on, keep map locked to user
-                    if (isDrivingMode) {
-                        map.panTo([userLat, userLng], { animate: true, duration: 0.5 });
-                    }
-                },
-                (error) => { console.error("GPS Error:", error); },
-                { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
-            );
-        } else {
-            alert("Geolocation is not supported by your browser.");
+                // Update Marker Location
+                userMarker.setLngLat([userLng, userLat]);
+
+                // Initial load: jump to user
+                if (map.getZoom() === 2) {
+                    map.flyTo({ center: [userLng, userLat], zoom: 15 });
+                }
+
+                // If Driving Mode is active, lock camera strictly to user
+                if (isDriving) {
+                    map.setCenter([userLng, userLat]);
+                }
+            }, (err) => console.error(err), { enableHighAccuracy: true });
         }
 
-        // 6. Compass & Map Rotation Logic
-        const btnCompass = document.getElementById('btn-compass');
-        const mapContainer = document.getElementById('map-container');
-
-        // Handle Device Orientation (Phone Compass)
+        // 4. Device Orientation (Compass Routing)
         function handleOrientation(event) {
-            if (!isDrivingMode) return;
-
-            // Get heading (varies between iOS and Android)
+            if (!isDriving) return;
+            // WebKit (iOS) vs Standard (Android) compass heading
             let heading = event.webkitCompassHeading || Math.abs(event.alpha - 360);
-            
-            if (heading) {
+            if (heading !== null) {
                 currentHeading = heading;
-                
-                // 1. Rotate the map container opposite to the heading to keep the phone pointing "up"
-                mapContainer.style.transform = `rotate(${-heading}deg)`;
-                
-                // 2. Keep the arrow pointing straight up relative to the screen
-                const svg = document.querySelector('.user-arrow svg');
-                if (svg) svg.style.transform = `rotate(${heading}deg)`;
+                map.setBearing(heading); // Physically rotates the 3D map scene smoothly
+                userMarker.setRotation(heading); // Rotates the arrow marker
             }
         }
 
-        btnCompass.addEventListener('click', async () => {
-            // Request permission for iOS 13+ devices
+        // 5. Driving Mode Toggle
+        btnDrive.addEventListener('click', async () => {
+            // Request iOS Compass permissions if needed
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 try {
                     const permission = await DeviceOrientationEvent.requestPermission();
-                    if (permission !== 'granted') {
-                        alert("Compass permission denied.");
-                        return;
-                    }
-                } catch (error) { console.error(error); }
+                    if (permission !== 'granted') return alert('Compass permission required for driving mode.');
+                } catch (e) { console.error(e); }
             }
 
-            isDrivingMode = !isDrivingMode;
-            
-            if (isDrivingMode) {
-                btnCompass.innerText = "🛑 Stop Driving Mode";
-                btnCompass.classList.add('active');
-                map.setZoom(18); // Zoom in close like a real GPS
-                map.dragging.disable(); // Disable manual dragging while driving
-                window.addEventListener('deviceorientation', handleOrientation);
+            isDriving = !isDriving;
+
+            if (isDriving) {
+                // START DRIVING
+                btnDrive.innerText = "Stop Driving";
+                btnDrive.classList.add('active');
                 
-                // Recenter immediately
-                if (userLat) map.panTo([userLat, userLng]);
+                // Change marker to Car/Arrow
+                userMarker.getElement().replaceWith(elNavArrow);
+                userMarker = new maplibregl.Marker({ element: elNavArrow, rotationAlignment: 'map' })
+                    .setLngLat([userLng, userLat]).addTo(map);
+
+                // Tilt map to 3D View and Zoom in
+                map.flyTo({ center: [userLng, userLat], zoom: 18, pitch: 60, speed: 1.5 });
+                window.addEventListener('deviceorientation', handleOrientation);
             } else {
-                btnCompass.innerText = "🧭 Start Driving Mode";
-                btnCompass.classList.remove('active');
-                map.dragging.enable(); // Re-enable manual map panning
-                mapContainer.style.transform = `rotate(0deg)`; // Reset map rotation
+                // STOP DRIVING
+                btnDrive.innerText = "Start Driving";
+                btnDrive.classList.remove('active');
+
+                // Revert to Blue Dot
+                userMarker.getElement().replaceWith(elBlueDot);
+                userMarker = new maplibregl.Marker({ element: elBlueDot, rotationAlignment: 'map' })
+                    .setLngLat([userLng, userLat]).addTo(map);
+
+                // Revert map to flat 2D top-down view
+                map.flyTo({ pitch: 0, bearing: 0, zoom: 15 });
                 window.removeEventListener('deviceorientation', handleOrientation);
             }
         });
 
-        // 7. Recenter Button
-        document.getElementById('btn-recenter').addEventListener('click', () => {
-            if (userLat && userLng) {
-                map.setView([userLat, userLng], 16);
-            } else {
-                alert("Still waiting for GPS signal...");
+        // 6. OSRM Routing (Free Directions Engine)
+        async function getRoute(destLng, destLat) {
+            if (!userLat) return alert("Waiting for GPS...");
+            
+            const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${userLng},${userLat};${destLng},${destLat}?geometries=geojson&overview=full`;
+            
+            try {
+                const response = await fetch(osrmUrl);
+                const data = await response.json();
+                const routeGeoJSON = data.routes[0].geometry;
+
+                // Remove existing route if any
+                if (map.getSource('route')) {
+                    map.getSource('route').setData(routeGeoJSON);
+                } else {
+                    map.addSource('route', { type: 'geojson', data: routeGeoJSON });
+                    map.addLayer({
+                        id: 'route',
+                        type: 'line',
+                        source: 'route',
+                        layout: { 'line-join': 'round', 'line-cap': 'round' },
+                        paint: { 'line-color': '#1a73e8', 'line-width': 8, 'line-opacity': 0.8 }
+                    }, userMarker); // Draw line underneath marker
+                }
+
+                // Fit map bounds to show whole route
+                const coordinates = routeGeoJSON.coordinates;
+                const bounds = coordinates.reduce((b, coord) => b.extend(coord), new maplibregl.LngLatBounds(coordinates[0], coordinates[0]));
+                if(!isDriving) map.fitBounds(bounds, { padding: 50 });
+
+                btnEndRoute.style.display = 'block';
+
+            } catch (error) {
+                console.error("Routing error:", error);
+                alert("Could not fetch route. Please try again.");
             }
+        }
+
+        btnEndRoute.addEventListener('click', () => {
+            if (map.getSource('route')) map.getSource('route').setData({type: 'FeatureCollection', features: []});
+            btnEndRoute.style.display = 'none';
+        });
+
+        // 7. Search Feature (Using OpenStreetMap Nominatim)
+        let searchTimeout;
+        searchInput.addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            const query = e.target.value;
+            if (query.length < 3) { searchResults.style.display = 'none'; return; }
+            
+            searchTimeout = setTimeout(async () => {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=5`);
+                const data = await res.json();
+                
+                searchResults.innerHTML = '';
+                if (data.length > 0) {
+                    searchResults.style.display = 'flex';
+                    data.forEach(place => {
+                        const div = document.createElement('div');
+                        div.className = 'search-item';
+                        div.innerText = place.display_name;
+                        div.onclick = () => {
+                            searchResults.style.display = 'none';
+                            searchInput.value = place.display_name;
+                            getRoute(parseFloat(place.lon), parseFloat(place.lat)); // Generate route to search
+                        };
+                        searchResults.appendChild(div);
+                    });
+                }
+            }, 500);
+        });
+
+        // Hide search results if clicked outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.search-box')) searchResults.style.display = 'none';
+        });
+
+        // 8. Home Button Logic
+        document.getElementById('btn-set-home').addEventListener('click', () => {
+            if(!userLat) return alert("Waiting for GPS...");
+            if(confirm("Save your current location as Home?")) {
+                homeCoords = { lat: userLat, lng: userLng };
+                localStorage.setItem('homeCoords', JSON.stringify(homeCoords));
+                document.getElementById('btn-set-home').style.display = 'none';
+                alert("Home saved!");
+            }
+        });
+
+        document.getElementById('btn-home').addEventListener('click', () => {
+            if (!homeCoords) return alert("You haven't set a Home address yet! Click 'Set current location as Home'.");
+            getRoute(homeCoords.lng, homeCoords.lat);
+        });
+
+        // 9. Right-Side Action Buttons
+        document.getElementById('btn-recenter').addEventListener('click', () => {
+            if (userLat) map.flyTo({ center: [userLng, userLat], zoom: 16 });
+        });
+        document.getElementById('btn-zoom-in').addEventListener('click', () => map.zoomIn());
+        document.getElementById('btn-zoom-out').addEventListener('click', () => map.zoomOut());
+
+        // Long press/Right click to set destination anywhere on map
+        map.on('contextmenu', (e) => {
+            if (confirm("Navigate here?")) getRoute(e.lngLat.lng, e.lngLat.lat);
         });
 
     </script>
