@@ -3,33 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Advanced OpenFreeMap Navigation</title>
+    <title>OpenFreeMap - Live GPS Navigation</title>
 
     <!-- MapLibre GL CSS -->
     <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
 
     <style>
-        /* Base Reset & Typography */
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
-        body, html { width: 100%; height: 100%; overflow: hidden; background-color: #f0f3f4; }
+        /* Base Reset */
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, Helvetica, sans-serif; }
+        body, html { width: 100%; height: 100%; overflow: hidden; background-color: #e5e3df; }
         
-        /* Map Container */
         #map { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 1; }
 
-        /* UI Overlays */
+        /* UI Containers */
         .ui-container { position: absolute; z-index: 10; pointer-events: none; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: space-between; padding: 15px; }
         .pointer-auto { pointer-events: auto; }
 
-        /* Top Bar: Search & Home */
+        /* Top Search & Home Buttons */
         .top-bar { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 400px; }
         
         .search-box {
             background: white; border-radius: 24px; display: flex; align-items: center;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.2); padding: 5px 15px; position: relative;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2); padding: 5px 15px; position: relative;
         }
-        .search-box input {
-            border: none; outline: none; padding: 12px 5px; width: 100%; font-size: 16px;
-        }
+        .search-box input { border: none; outline: none; padding: 12px 5px; width: 100%; font-size: 16px; }
         #search-results {
             position: absolute; top: 55px; left: 0; right: 0; background: white;
             border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
@@ -39,59 +36,64 @@
         .search-item:hover { background: #f8f9fa; }
 
         .btn-home {
-            background: white; border: none; padding: 12px 20px; border-radius: 24px;
+            background: white; border: none; padding: 10px 18px; border-radius: 24px;
             font-weight: bold; color: #1a73e8; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.2);
             align-self: flex-start; display: flex; align-items: center; gap: 8px; font-size: 14px;
         }
 
-        /* Right Floating Action Buttons */
-        .fab-container { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 10px; pointer-events: auto; }
+        /* Floating Buttons (Right Side) */
+        .fab-container { position: absolute; right: 15px; top: 40%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 10px; pointer-events: auto; }
         .fab {
             background: white; border: none; width: 45px; height: 45px; border-radius: 50%;
             box-shadow: 0 2px 6px rgba(0,0,0,0.2); cursor: pointer; font-size: 20px; display: flex; align-items: center; justify-content: center;
         }
 
-        /* Bottom Control Panel */
+        /* Bottom Dashboard */
         .bottom-panel {
             background: white; border-radius: 20px; padding: 20px; box-shadow: 0 -4px 15px rgba(0,0,0,0.1);
             display: flex; flex-direction: column; gap: 15px; pointer-events: auto; max-width: 400px; margin: 0 auto; width: 100%;
         }
-        .dashboard { display: flex; justify-content: space-between; align-items: center; }
-        .speed-box { display: flex; flex-direction: column; align-items: center; }
+        
+        .dashboard-main { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+
+        /* Route Info (ETA, Distance, Duration) */
+        .route-info { display: none; flex-direction: column; }
+        .route-time { font-size: 28px; font-weight: 800; color: #188038; /* Google Maps Green for ETA */ line-height: 1.1; }
+        .route-details { font-size: 14px; color: #5f6368; font-weight: 500; margin-top: 4px; }
+
+        /* Speedometer (Hidden by default) */
+        .speed-box { display: none; flex-direction: column; align-items: center; justify-content: center; min-width: 60px; }
         .speed-val { font-size: 32px; font-weight: 800; color: #202124; line-height: 1; }
         .speed-unit { font-size: 12px; color: #5f6368; font-weight: bold; }
-        
-        .drive-btn {
-            background: #1a73e8; color: white; border: none; padding: 15px 30px;
-            border-radius: 30px; font-size: 16px; font-weight: bold; cursor: pointer;
-            flex-grow: 1; margin-left: 15px; transition: 0.2s;
-        }
-        .drive-btn.active { background: #ea4335; }
-        .end-route-btn { background: #f1f3f4; color: #ea4335; border: none; padding: 10px; border-radius: 12px; font-weight: bold; cursor: pointer; display: none; }
 
-        /* Custom Map Markers */
-        /* 1. Idle Blue Dot */
+        /* Action Buttons */
+        .drive-btn {
+            background: #1a73e8; color: white; border: none; padding: 15px 25px;
+            border-radius: 30px; font-size: 16px; font-weight: bold; cursor: pointer;
+            flex-grow: 1; margin-left: 15px; transition: 0.2s; display: flex; justify-content: center; align-items: center; gap: 8px;
+        }
+        .drive-btn.active { background: #ea4335; } /* Red when driving to Stop */
+        .end-route-btn { background: #f1f3f4; color: #3c4043; border: none; padding: 12px; border-radius: 12px; font-weight: bold; cursor: pointer; display: none; text-align: center; }
+
+        /* Markers */
         .blue-dot {
             width: 20px; height: 20px; background-color: #4285F4; border: 3px solid white;
             border-radius: 50%; box-shadow: 0 0 10px rgba(66, 133, 244, 0.5);
         }
         .blue-dot::after {
             content: ""; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
-            background: rgba(66, 133, 244, 0.3); border-radius: 50%;
-            animation: pulse 2s infinite ease-in-out; pointer-events: none;
+            background: rgba(66, 133, 244, 0.3); border-radius: 50%; animation: pulse 2s infinite ease-in-out; pointer-events: none;
         }
         @keyframes pulse { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
 
-        /* 2. Driving Navigation Arrow */
         .nav-arrow {
-            width: 40px; height: 40px; background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%234285F4" stroke="white" stroke-width="1.5"><path d="M12 2L4 20l1.41 1.41L12 17l6.59 4.41L20 20l-8-18z"/></svg>') no-repeat center center;
-            background-size: contain; filter: drop-shadow(0 4px 4px rgba(0,0,0,0.4));
+            width: 46px; height: 46px; background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%234285F4" stroke="white" stroke-width="1.5"><path d="M12 2L4 20l1.41 1.41L12 17l6.59 4.41L20 20l-8-18z"/></svg>') no-repeat center center;
+            background-size: contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.4));
         }
 
-        /* Mobile specific fixes */
+        /* Mobile Adjustments */
         @media (max-width: 600px) {
-            .bottom-panel { border-radius: 20px 20px 0 0; margin: 0 -15px -15px -15px; width: calc(100% + 30px); max-width: none; }
-            .fab-container { top: 40%; }
+            .bottom-panel { border-radius: 20px 20px 0 0; margin: 0 -15px -15px -15px; width: calc(100% + 30px); max-width: none; padding-bottom: 30px; }
         }
     </style>
 </head>
@@ -106,30 +108,41 @@
         <div class="top-bar">
             <div class="search-box pointer-auto">
                 <span style="font-size: 20px; padding-right: 10px;">🔍</span>
-                <input type="text" id="search-input" placeholder="Search here..." autocomplete="off">
+                <input type="text" id="search-input" placeholder="Search destination..." autocomplete="off">
                 <div id="search-results"></div>
             </div>
-            <button class="btn-home pointer-auto" id="btn-home">🏠 Take me Home</button>
-            <button class="btn-home pointer-auto" id="btn-set-home" style="color: #5f6368; display: none;">⚙️ Set current location as Home</button>
+            <button class="btn-home pointer-auto" id="btn-home">🏠 Home</button>
+            <button class="btn-home pointer-auto" id="btn-set-home" style="color: #5f6368; display: none;">⚙️ Set Home Here</button>
         </div>
 
-        <!-- Floating Action Buttons -->
+        <!-- Floating Buttons -->
         <div class="fab-container">
             <button class="fab" id="btn-recenter" title="Recenter">📍</button>
             <button class="fab" id="btn-zoom-in" title="Zoom In">➕</button>
             <button class="fab" id="btn-zoom-out" title="Zoom Out">➖</button>
         </div>
 
-        <!-- Bottom Dashboard -->
+        <!-- Bottom Navigation Panel -->
         <div class="bottom-panel pointer-auto">
-            <div class="dashboard">
-                <div class="speed-box">
+            <div class="dashboard-main">
+                
+                <!-- Speedometer (Hidden by default) -->
+                <div class="speed-box" id="speed-box">
                     <span class="speed-val" id="speed-display">0</span>
                     <span class="speed-unit">km/h</span>
                 </div>
-                <button class="drive-btn" id="btn-drive">Start Driving</button>
+
+                <!-- Route Info (Hidden by default) -->
+                <div class="route-info" id="route-info">
+                    <div class="route-time" id="route-time">-- min</div>
+                    <div class="route-details">
+                        <span id="route-dist">-- km</span> • <span id="route-eta">--:--</span>
+                    </div>
+                </div>
+
+                <button class="drive-btn" id="btn-drive">🧭 Start Driving</button>
             </div>
-            <button class="end-route-btn" id="btn-end-route">✖ Cancel Navigation</button>
+            <button class="end-route-btn" id="btn-end-route">✖ Exit Navigation</button>
         </div>
     </div>
 
@@ -137,88 +150,74 @@
     <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
 
     <script>
-        // 1. Initialize MapLibre with OpenFreeMap 3D Vector Tiles
+        // 1. Initialize OpenFreeMap (High performance 3D vector tiles)
         const map = new maplibregl.Map({
             container: 'map',
-            style: 'https://tiles.openfreemap.org/styles/liberty', // Free, open-source beautiful map style
+            style: 'https://tiles.openfreemap.org/styles/liberty',
             center: [0, 0],
-            zoom: 2,
-            pitch: 0, // Viewing angle (0 is top-down, 60 is 3D driving view)
-            bearing: 0 // Compass direction
+            zoom: 2, pitch: 0, bearing: 0
         });
 
-        // 2. Global Variables
+        // 2. Variables & UI Elements
         let userLat = null, userLng = null;
         let isDriving = false;
         let userMarker = null;
-        let currentHeading = 0;
-        let homeCoords = JSON.parse(localStorage.getItem('homeCoords')); // Load saved home
+        let homeCoords = JSON.parse(localStorage.getItem('homeCoords')); 
 
-        // HTML elements for the custom marker
         const elBlueDot = document.createElement('div'); elBlueDot.className = 'blue-dot';
         const elNavArrow = document.createElement('div'); elNavArrow.className = 'nav-arrow';
 
-        // Initialize Marker (Starts as blue dot)
-        userMarker = new maplibregl.Marker({ element: elBlueDot, rotationAlignment: 'map' })
-            .setLngLat([0,0])
-            .addTo(map);
+        // Initialize user marker
+        userMarker = new maplibregl.Marker({ element: elBlueDot, rotationAlignment: 'map' }).setLngLat([0,0]).addTo(map);
 
-        // UI Elements
-        const searchInput = document.getElementById('search-input');
-        const searchResults = document.getElementById('search-results');
         const btnDrive = document.getElementById('btn-drive');
+        const speedBox = document.getElementById('speed-box');
         const speedDisplay = document.getElementById('speed-display');
+        const routeInfo = document.getElementById('route-info');
         const btnEndRoute = document.getElementById('btn-end-route');
 
-        // Check if Home is set, if not show the "Set Home" button
-        if (!homeCoords) {
-            document.getElementById('btn-set-home').style.display = 'flex';
-        }
+        if (!homeCoords) document.getElementById('btn-set-home').style.display = 'flex';
 
-        // 3. Geolocation & Speed Tracking
+        // 3. Live GPS Tracking
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition((pos) => {
                 userLat = pos.coords.latitude;
                 userLng = pos.coords.longitude;
                 
-                // Speed calculation
-                let speedMps = pos.coords.speed || 0;
-                speedDisplay.innerText = Math.round(speedMps * 3.6); // Convert m/s to km/h
-
-                // Update Marker Location
+                // Update Marker Position
                 userMarker.setLngLat([userLng, userLat]);
 
-                // Initial load: jump to user
-                if (map.getZoom() === 2) {
-                    map.flyTo({ center: [userLng, userLat], zoom: 15 });
-                }
+                // Calculate Live Speed
+                let speedMps = pos.coords.speed || 0;
+                speedDisplay.innerText = Math.round(speedMps * 3.6); 
 
-                // If Driving Mode is active, lock camera strictly to user
+                // Initial Map Zoom
+                if (map.getZoom() === 2) map.flyTo({ center: [userLng, userLat], zoom: 15 });
+
+                // **Crucial: Keep camera locked on user while driving**
                 if (isDriving) {
                     map.setCenter([userLng, userLat]);
                 }
             }, (err) => console.error(err), { enableHighAccuracy: true });
         }
 
-        // 4. Device Orientation (Compass Routing)
+        // 4. Compass Rotation (3D Driving View)
         function handleOrientation(event) {
             if (!isDriving) return;
-            // WebKit (iOS) vs Standard (Android) compass heading
             let heading = event.webkitCompassHeading || Math.abs(event.alpha - 360);
             if (heading !== null) {
-                currentHeading = heading;
-                map.setBearing(heading); // Physically rotates the 3D map scene smoothly
-                userMarker.setRotation(heading); // Rotates the arrow marker
+                map.setBearing(heading); 
+                userMarker.setRotation(heading); 
             }
         }
 
-        // 5. Driving Mode Toggle
+        // 5. Driving Mode Toggle Logic
         btnDrive.addEventListener('click', async () => {
-            // Request iOS Compass permissions if needed
+            // iOS Compass Permissions
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 try {
                     const permission = await DeviceOrientationEvent.requestPermission();
-                    if (permission !== 'granted') return alert('Compass permission required for driving mode.');
+                    if (permission !== 'granted') return alert('Compass permission required.');
                 } catch (e) { console.error(e); }
             }
 
@@ -226,81 +225,123 @@
 
             if (isDriving) {
                 // START DRIVING
-                btnDrive.innerText = "Stop Driving";
+                btnDrive.innerText = "🛑 End Drive";
                 btnDrive.classList.add('active');
                 
-                // Change marker to Car/Arrow
+                // Show Speedometer, Hide Route info (unless route is active)
+                speedBox.style.display = 'flex';
+
+                // Transform Marker to Nav Arrow
                 userMarker.getElement().replaceWith(elNavArrow);
                 userMarker = new maplibregl.Marker({ element: elNavArrow, rotationAlignment: 'map' })
                     .setLngLat([userLng, userLat]).addTo(map);
 
-                // Tilt map to 3D View and Zoom in
-                map.flyTo({ center: [userLng, userLat], zoom: 18, pitch: 60, speed: 1.5 });
+                // Swoop camera into 3D Google Maps style view
+                map.flyTo({ center: [userLng, userLat], zoom: 18.5, pitch: 65, speed: 1.5 });
                 window.addEventListener('deviceorientation', handleOrientation);
             } else {
                 // STOP DRIVING
-                btnDrive.innerText = "Start Driving";
+                btnDrive.innerText = "🧭 Start Driving";
                 btnDrive.classList.remove('active');
+                
+                speedBox.style.display = 'none';
 
-                // Revert to Blue Dot
+                // Transform back to Blue Dot
                 userMarker.getElement().replaceWith(elBlueDot);
                 userMarker = new maplibregl.Marker({ element: elBlueDot, rotationAlignment: 'map' })
                     .setLngLat([userLng, userLat]).addTo(map);
 
-                // Revert map to flat 2D top-down view
+                // Reset map angle
                 map.flyTo({ pitch: 0, bearing: 0, zoom: 15 });
                 window.removeEventListener('deviceorientation', handleOrientation);
             }
         });
 
-        // 6. OSRM Routing (Free Directions Engine)
+        // 6. Routing System (Directions, ETA, Distance)
         async function getRoute(destLng, destLat) {
             if (!userLat) return alert("Waiting for GPS...");
             
+            // OSRM Free Routing API
             const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${userLng},${userLat};${destLng},${destLat}?geometries=geojson&overview=full`;
             
             try {
                 const response = await fetch(osrmUrl);
                 const data = await response.json();
+                
+                // Get Path
                 const routeGeoJSON = data.routes[0].geometry;
 
-                // Remove existing route if any
+                // Extract & Format Duration / Distance
+                const durationSeconds = data.routes[0].duration;
+                const distanceMeters = data.routes[0].distance;
+                
+                const durationMins = Math.ceil(durationSeconds / 60);
+                const distanceKm = (distanceMeters / 1000).toFixed(1);
+
+                // Calculate Arrival Time (ETA)
+                const arrivalTime = new Date(Date.now() + durationSeconds * 1000);
+                const etaFormatted = arrivalTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                // Update UI Texts
+                if(durationMins > 59) {
+                    const hrs = Math.floor(durationMins / 60);
+                    const mins = durationMins % 60;
+                    document.getElementById('route-time').innerText = `${hrs} hr ${mins} min`;
+                } else {
+                    document.getElementById('route-time').innerText = `${durationMins} min`;
+                }
+                document.getElementById('route-dist').innerText = `${distanceKm} km`;
+                document.getElementById('route-eta').innerText = `ETA ${etaFormatted}`;
+
+                // Show Route Info Panel
+                routeInfo.style.display = 'flex';
+                btnEndRoute.style.display = 'block';
+
+                // Draw the Google Maps Style Thick Blue Line on the Road
                 if (map.getSource('route')) {
                     map.getSource('route').setData(routeGeoJSON);
                 } else {
                     map.addSource('route', { type: 'geojson', data: routeGeoJSON });
+                    
+                    // Main solid blue line
                     map.addLayer({
-                        id: 'route',
-                        type: 'line',
-                        source: 'route',
+                        id: 'route', type: 'line', source: 'route',
                         layout: { 'line-join': 'round', 'line-cap': 'round' },
-                        paint: { 'line-color': '#1a73e8', 'line-width': 8, 'line-opacity': 0.8 }
-                    }, userMarker); // Draw line underneath marker
+                        paint: { 'line-color': '#4285F4', 'line-width': 8, 'line-opacity': 0.9 }
+                    }, userMarker);
+
+                    // Darker blue casing (border) around the line for depth
+                    map.addLayer({
+                        id: 'route-casing', type: 'line', source: 'route',
+                        layout: { 'line-join': 'round', 'line-cap': 'round' },
+                        paint: { 'line-color': '#1a73e8', 'line-width': 12, 'line-opacity': 0.4 }
+                    }, 'route'); // Placed just below the main route line
                 }
 
-                // Fit map bounds to show whole route
-                const coordinates = routeGeoJSON.coordinates;
-                const bounds = coordinates.reduce((b, coord) => b.extend(coord), new maplibregl.LngLatBounds(coordinates[0], coordinates[0]));
-                if(!isDriving) map.fitBounds(bounds, { padding: 50 });
+                // Auto-fit camera to show full route if not driving
+                if(!isDriving) {
+                    const coordinates = routeGeoJSON.coordinates;
+                    const bounds = coordinates.reduce((b, coord) => b.extend(coord), new maplibregl.LngLatBounds(coordinates[0], coordinates[0]));
+                    map.fitBounds(bounds, { padding: { top: 80, bottom: 250, left: 50, right: 50 } });
+                }
 
-                btnEndRoute.style.display = 'block';
-
-            } catch (error) {
-                console.error("Routing error:", error);
-                alert("Could not fetch route. Please try again.");
-            }
+            } catch (error) { console.error("Routing error:", error); }
         }
 
+        // Cancel Navigation
         btnEndRoute.addEventListener('click', () => {
             if (map.getSource('route')) map.getSource('route').setData({type: 'FeatureCollection', features: []});
             btnEndRoute.style.display = 'none';
+            routeInfo.style.display = 'none'; // Hide ETA
+            if(isDriving) { btnDrive.click(); } // Turn off driving mode automatically
         });
 
-        // 7. Search Feature (Using OpenStreetMap Nominatim)
+        // 7. Search & Home Logic
         let searchTimeout;
-        searchInput.addEventListener('input', (e) => {
+        document.getElementById('search-input').addEventListener('input', (e) => {
             clearTimeout(searchTimeout);
             const query = e.target.value;
+            const searchResults = document.getElementById('search-results');
             if (query.length < 3) { searchResults.style.display = 'none'; return; }
             
             searchTimeout = setTimeout(async () => {
@@ -316,8 +357,8 @@
                         div.innerText = place.display_name;
                         div.onclick = () => {
                             searchResults.style.display = 'none';
-                            searchInput.value = place.display_name;
-                            getRoute(parseFloat(place.lon), parseFloat(place.lat)); // Generate route to search
+                            document.getElementById('search-input').value = place.display_name;
+                            getRoute(parseFloat(place.lon), parseFloat(place.lat)); 
                         };
                         searchResults.appendChild(div);
                     });
@@ -325,38 +366,26 @@
             }, 500);
         });
 
-        // Hide search results if clicked outside
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('.search-box')) searchResults.style.display = 'none';
-        });
-
-        // 8. Home Button Logic
         document.getElementById('btn-set-home').addEventListener('click', () => {
             if(!userLat) return alert("Waiting for GPS...");
-            if(confirm("Save your current location as Home?")) {
-                homeCoords = { lat: userLat, lng: userLng };
-                localStorage.setItem('homeCoords', JSON.stringify(homeCoords));
-                document.getElementById('btn-set-home').style.display = 'none';
-                alert("Home saved!");
-            }
+            homeCoords = { lat: userLat, lng: userLng };
+            localStorage.setItem('homeCoords', JSON.stringify(homeCoords));
+            document.getElementById('btn-set-home').style.display = 'none';
+            alert("Home location saved!");
         });
 
         document.getElementById('btn-home').addEventListener('click', () => {
-            if (!homeCoords) return alert("You haven't set a Home address yet! Click 'Set current location as Home'.");
+            if (!homeCoords) return alert("No Home set! Click 'Set Home Here'.");
             getRoute(homeCoords.lng, homeCoords.lat);
         });
 
-        // 9. Right-Side Action Buttons
         document.getElementById('btn-recenter').addEventListener('click', () => {
             if (userLat) map.flyTo({ center: [userLng, userLat], zoom: 16 });
         });
         document.getElementById('btn-zoom-in').addEventListener('click', () => map.zoomIn());
         document.getElementById('btn-zoom-out').addEventListener('click', () => map.zoomOut());
 
-        // Long press/Right click to set destination anywhere on map
-        map.on('contextmenu', (e) => {
-            if (confirm("Navigate here?")) getRoute(e.lngLat.lng, e.lngLat.lat);
-        });
+        map.on('contextmenu', (e) => { if (confirm("Drive to this pinned location?")) getRoute(e.lngLat.lng, e.lngLat.lat); });
 
     </script>
 </body>
